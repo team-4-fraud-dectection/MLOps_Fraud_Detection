@@ -1,4 +1,6 @@
 [core]
-    remote = myremote
+    remote = origin
 ['remote "myremote"']
     url = gdrive://1oCfkOO1BwOhXokvnUHiRFhOtvujG3_hb
+['remote "origin"']
+    url = https://dagshub.com/rizerize-1/DVC_Fraud_Detection.dvc
