@@ -1,2 +1,7 @@
 merged_data.csv
 /raw_data
+venv/
+.env
+.DS_Store
+Thumbs.db
+.dvc/config.local
