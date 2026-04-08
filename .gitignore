@@ -1,7 +1,8 @@
-merged_data.csv
+merged_data.csv.gz
 /raw_data
 venv/
 .env
 .DS_Store
 Thumbs.db
 .dvc/config.local
+/data
