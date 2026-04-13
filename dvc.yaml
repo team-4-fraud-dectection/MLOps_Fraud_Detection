@@ -54,3 +54,39 @@ stages:
       - data/balanced/y_train_rus.parquet
     metrics:
       - metrics/balancing_metrics.json
+
+  train:
+    cmd: >-
+      python src/train.py
+      --x_train_path ${train.x_train_path}
+      --y_train_path ${train.y_train_path}
+      --x_val_path ${train.x_val_path}
+      --y_val_path ${train.y_val_path}
+      --model_path ${train.model_path}
+      --metrics_path ${train.metrics_path}
+      --enable_tuning
+      --n_trials ${train.n_trials}
+      --tune_models ${train.tune_models}
+      --mlflow_experiment ${mlflow.experiment_name}
+      --mlflow_run_name ${mlflow.run_name}
+    deps:
+      - src/train.py
+      - data/balanced/X_train_rus.parquet
+      - data/balanced/y_train_rus.parquet
+      - data/featured/X_val.parquet
+      - data/featured/y_val.parquet
+    params:
+      - train.x_train_path
+      - train.y_train_path
+      - train.x_val_path
+      - train.y_val_path
+      - train.model_path
+      - train.metrics_path
+      - train.n_trials
+      - train.tune_models
+      - mlflow.experiment_name
+      - mlflow.run_name
+    outs:
+      - models/model.pkl
+    metrics:
+      - metrics/train_metrics.json

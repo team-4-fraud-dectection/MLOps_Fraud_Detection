@@ -1,8 +1,20 @@
-         
-venv/
-.env
-.DS_Store
-Thumbs.db
+# DVC
+.dvc/cache/
 .dvc/config.local
 
-/data
+# Data & models
+data/
+models/
+
+# MLflow
+mlruns/
+
+# CatBoost logs
+catboost_info/
+
+# Python
+__pycache__/
+*.pyc
+
+# Notebook
+*.ipynb

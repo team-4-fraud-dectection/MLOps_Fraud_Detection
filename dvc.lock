@@ -132,3 +132,52 @@ stages:
       hash: md5
       md5: d0600236dc26089567ae2796703345f1
       size: 2057
+  train:
+    cmd: python src/train.py --x_train_path data/balanced/X_train_rus.parquet 
+      --y_train_path data/balanced/y_train_rus.parquet --x_val_path 
+      data/featured/X_val.parquet --y_val_path data/featured/y_val.parquet 
+      --model_path models/model.pkl --metrics_path metrics/train_metrics.json 
+      --enable_tuning --n_trials 50 --tune_models XGBoost,LightGBM,CatBoost 
+      --mlflow_experiment ieee_fraud_detection --mlflow_run_name tune_v1
+    deps:
+    - path: data/balanced/X_train_rus.parquet
+      hash: md5
+      md5: 9fd6492720b835093ace41dec781636f
+      size: 18684509
+    - path: data/balanced/y_train_rus.parquet
+      hash: md5
+      md5: 32979c80b291ae923dab97de6bb5fd52
+      size: 1198
+    - path: data/featured/X_val.parquet
+      hash: md5
+      md5: cb76d947fef77a8de26a9446df8124da
+      size: 28636588
+    - path: data/featured/y_val.parquet
+      hash: md5
+      md5: 6e167e3372412432ab738299b7b0468d
+      size: 8126
+    - path: src/train.py
+      hash: md5
+      md5: 689ffe1daba2a1302113d914ec179e34
+      size: 22313
+    params:
+      params.yaml:
+        mlflow.experiment_name: ieee_fraud_detection
+        mlflow.run_name: tune_v1
+        train.metrics_path: metrics/train_metrics.json
+        train.model_path: models/model.pkl
+        train.n_trials: 50
+        train.tune_models: XGBoost,LightGBM,CatBoost
+        train.x_train_path: data/balanced/X_train_rus.parquet
+        train.x_val_path: data/featured/X_val.parquet
+        train.y_train_path: data/balanced/y_train_rus.parquet
+        train.y_val_path: data/featured/y_val.parquet
+    outs:
+    - path: metrics/train_metrics.json
+      hash: md5
+      md5: 2000d1c684fde4b708386e2fca1d2d0a
+      size: 9329
+    - path: models/model.pkl
+      hash: md5
+      md5: dd6a9056a02b69951fa216959fbd102b
+      size: 3168239

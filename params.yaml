@@ -31,3 +31,16 @@ metrics:
   secondary:
     - recall
     - f1
+train:
+  x_train_path: data/balanced/X_train_rus.parquet
+  y_train_path: data/balanced/y_train_rus.parquet
+  x_val_path: data/featured/X_val.parquet
+  y_val_path: data/featured/y_val.parquet
+  model_path: models/model.pkl
+  metrics_path: metrics/train_metrics.json
+  n_trials: 50
+  tune_models: XGBoost,LightGBM,CatBoost
+
+mlflow:
+  experiment_name: ieee_fraud_detection
+  run_name: tune_v1
