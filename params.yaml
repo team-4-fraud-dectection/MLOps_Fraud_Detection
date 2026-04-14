@@ -1,0 +1,46 @@
+preprocess:
+  input_path: data/merged_train_data.csv
+  train_ratio: 0.8
+  top_k_missing: 80
+  cat_min_freq: 0.0005
+
+features:
+  target_col: isFraud
+  pca_components: 2
+  use_pca: true
+  use_missing_flags: true
+  use_v_features: true
+  use_frequency_encoding: true
+
+balance:
+  x_train_path: data/featured/X_train.parquet
+  y_train_path: data/featured/y_train.parquet
+  x_val_path: data/featured/X_val.parquet
+  y_val_path: data/featured/y_val.parquet
+  output_dir: data/balanced
+  sampling_ratio: 0.3
+  save_method: rus
+  method_candidates:
+    - rus
+    - smote
+  metrics_path: metrics/balancing_metrics.json
+  random_state: 42
+
+metrics:
+  primary: auprc
+  secondary:
+    - recall
+    - f1
+train:
+  x_train_path: data/balanced/X_train_rus.parquet
+  y_train_path: data/balanced/y_train_rus.parquet
+  x_val_path: data/featured/X_val.parquet
+  y_val_path: data/featured/y_val.parquet
+  model_path: models/model.pkl
+  metrics_path: metrics/train_metrics.json
+  n_trials: 50
+  tune_models: XGBoost,LightGBM,CatBoost
+
+mlflow:
+  experiment_name: ieee_fraud_detection
+  run_name: tune_v1

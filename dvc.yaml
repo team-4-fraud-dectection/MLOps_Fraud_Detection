@@ -1,0 +1,92 @@
+stages:
+  full_pipeline:
+    cmd: python src/pipeline.py
+    deps:
+      - src/pipeline.py
+      - data/merged_train_data.csv
+    params:
+      - preprocess.input_path
+      - preprocess.output_dir
+      - preprocess.model_dir
+      - preprocess.train_ratio
+      - preprocess.top_k_missing
+      - preprocess.clip_percentile
+      - preprocess.cat_min_freq      
+      - features.train_input_path
+      - features.val_input_path
+      - features.output_dir
+      - features.target_col
+      - features.pca_components
+      - features.use_pca
+      - features.use_missing_flags
+      - features.use_v_features
+      - features.use_frequency_encoding
+      - pipeline   
+
+    outs:
+      - data/featured/X_train.parquet
+      - data/featured/y_train.parquet
+      - data/featured/X_val.parquet
+      - data/featured/y_val.parquet
+      - artifacts/fraud_pipeline.pkl
+      - params.yaml
+
+  balance:
+    cmd: python src/balancing.py --x_train_path ${balance.x_train_path} --y_train_path ${balance.y_train_path} --x_val_path ${balance.x_val_path} --y_val_path ${balance.y_val_path} --output_dir ${balance.output_dir} --metrics_path ${balance.metrics_path} --sampling_ratio ${balance.sampling_ratio} --save_method ${balance.save_method} --random_state ${balance.random_state}
+    deps:
+      - src/balancing.py
+      - data/featured/X_train.parquet
+      - data/featured/y_train.parquet
+      - data/featured/X_val.parquet
+      - data/featured/y_val.parquet
+    params:
+      - balance.x_train_path
+      - balance.y_train_path
+      - balance.x_val_path
+      - balance.y_val_path
+      - balance.output_dir
+      - balance.metrics_path
+      - balance.sampling_ratio
+      - balance.save_method
+      - balance.random_state
+    outs:
+      - data/balanced/X_train_rus.parquet
+      - data/balanced/y_train_rus.parquet
+    metrics:
+      - metrics/balancing_metrics.json
+
+  train:
+    cmd: >-
+      python src/train.py
+      --x_train_path ${train.x_train_path}
+      --y_train_path ${train.y_train_path}
+      --x_val_path ${train.x_val_path}
+      --y_val_path ${train.y_val_path}
+      --model_path ${train.model_path}
+      --metrics_path ${train.metrics_path}
+      --enable_tuning
+      --n_trials ${train.n_trials}
+      --tune_models ${train.tune_models}
+      --mlflow_experiment ${mlflow.experiment_name}
+      --mlflow_run_name ${mlflow.run_name}
+    deps:
+      - src/train.py
+      - data/balanced/X_train_rus.parquet
+      - data/balanced/y_train_rus.parquet
+      - data/featured/X_val.parquet
+      - data/featured/y_val.parquet
+    params:
+      - train.x_train_path
+      - train.y_train_path
+      - train.x_val_path
+      - train.y_val_path
+      - train.model_path
+      - train.metrics_path
+      - train.n_trials
+      - train.tune_models
+      - mlflow.experiment_name
+      - mlflow.run_name
+    outs:
+      - models/model.pkl
+    metrics:
+      - metrics/train_metrics.json

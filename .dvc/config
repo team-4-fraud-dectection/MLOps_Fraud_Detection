@@ -1,4 +1,5 @@
 [core]
     remote = origin
 ['remote "origin"']
-    url = https://dagshub.com/rizerize-1/DVC_Fraud_Detection.dvc
+    url = s3://dvc
+    endpointurl = https://dagshub.com/rizerize-1/DVC_Fraud_Detection.s3

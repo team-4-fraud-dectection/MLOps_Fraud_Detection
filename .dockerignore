@@ -1,0 +1,15 @@
+.dvc/
+.git/
+.gitignore
+.dvcignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.venv/
+env/
+mlruns/
+data/
+metrics/
+*.ipynb

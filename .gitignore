@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 data/*
 !data/*.dvc             
 venv/
@@ -9,3 +10,25 @@ Thumbs.db
 /data
 /artifacts
 
+=======
+# DVC
+.dvc/cache/
+.dvc/config.local
+
+# Data & models
+data/
+models/
+
+# MLflow
+mlruns/
+
+# CatBoost logs
+catboost_info/
+
+# Python
+__pycache__/
+*.pyc
+
+# Notebook
+*.ipynb
+>>>>>>> 42deab75f6c745885fdac8dd40c0b20f5075d102
