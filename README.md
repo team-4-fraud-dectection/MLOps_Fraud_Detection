@@ -135,10 +135,10 @@ http://127.0.0.1:8000/docs
 
 ### Test prediction
 
-Use `sample_request.json`:
+Use `sample_request_predict.json`:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/predict -H "Content-Type: application/json" --data @sample_request.json
+curl -X POST http://127.0.0.1:8000/predict -H "Content-Type: application/json" --data @sample_request_predict.json
 ```
 
 ---
@@ -203,6 +203,25 @@ Prediction monitoring is built into the FastAPI service:
 - `/feedback` appends realized labels to `logs/prediction_feedback.jsonl`
 - `/health` exposes monitoring paths and model readiness
 
+Generate a more production-like demo window by replaying held-out validation features through the live API:
+
+```bash
+bash scripts/run-monitoring-demo.sh
+```
+
+This helper:
+
+- uses `data/featured/X_train.parquet` as the reference dataset
+- samples `data/featured/X_val.parquet` + `data/featured/y_val.parquet` as the current window
+- refreshes `logs/predictions.jsonl` and `logs/prediction_feedback.jsonl`
+- rebuilds the performance, drift, and status reports end-to-end
+
+Override the replay size if you want a larger or smaller demo batch:
+
+```bash
+MAX_RECORDS=2000 BATCH_SIZE=256 bash scripts/run-monitoring-demo.sh
+```
+
 Generate a realized performance summary from prediction + feedback logs:
 
 ```bash
@@ -216,7 +235,7 @@ Generate an Evidently data drift report:
 
 ```bash
 python src/monitor_drift.py \
-  --reference_path data/featured/X_val.parquet \
+  --reference_path data/featured/X_train.parquet \
   --prediction_log_path logs/predictions.jsonl \
   --output_dir reports/drift \
   --drift_share_threshold 0.5 \
@@ -238,8 +257,42 @@ python src/monitor_status.py
 Notes:
 
 - The drift script compares the reference feature dataset against recent inference features extracted from prediction logs.
+- For a quick monitoring demo, use `X_train` as reference and replay a sampled slice of `X_val/y_val` as the current window.
 - Evidently works best in Python 3.11. If your local Python is incompatible, run drift reporting through the project's CI or Docker environment.
 - `monitor_status.py` is the bridge to CT: it emits `should_retrain=true` when F1 drops below threshold or drift becomes too large.
+
+## Continuous Training (CT)
+
+Continuous training now uses the monitoring output as a gate instead of retraining blindly on every schedule.
+
+Evaluate the latest monitoring status locally:
+
+```bash
+python src/evaluate_ct_trigger.py \
+  --status-summary-path reports/monitoring/status_summary.json \
+  --output-path reports/monitoring/ct_decision.json
+```
+
+Run the local CT helper:
+
+```bash
+bash scripts/run-continuous-training.sh
+```
+
+Useful CT options:
+
+```bash
+DRY_RUN=true bash scripts/run-continuous-training.sh
+FORCE_RETRAIN=true bash scripts/run-continuous-training.sh
+PIPELINE_SCOPE=full bash scripts/run-continuous-training.sh
+```
+
+How CT works in this repo:
+
+- `monitor_status.py` writes `reports/monitoring/status_summary.json`
+- `evaluate_ct_trigger.py` reads that file and decides whether retraining is required
+- if `should_retrain=true`, the local helper reruns the DVC pipeline (`train` stage by default)
+- the GitHub Actions workflow `.github/workflows/continuous-training.yml` follows the same logic and only retrains when monitoring requests it, unless `force_retrain` is set on manual dispatch
 
 ---
 

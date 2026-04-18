@@ -1,0 +1,307 @@
+name: continuous-training
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_retrain:
+        description: "Ignore monitoring status and force a retraining run"
+        required: false
+        default: false
+        type: boolean
+      n_trials:
+        description: "Override Optuna trials for this retraining run"
+        required: false
+        type: string
+      tune_models:
+        description: "Override comma-separated model list, e.g. XGBoost,LightGBM"
+        required: false
+        type: string
+      promote_candidate:
+        description: "Promote the newly registered model version to Candidate after training"
+        required: false
+        default: false
+        type: boolean
+      run_name_suffix:
+        description: "Optional suffix appended to the MLflow run name"
+        required: false
+        type: string
+  schedule:
+    - cron: "0 2 * * 0"
+
+permissions:
+  contents: read
+
+jobs:
+  continuous-train:
+    runs-on: ubuntu-latest
+    env:
+      MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+      MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+      MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
+      DAGSHUB_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
+      DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+      DVC_ACCESS_KEY_ID: ${{ secrets.DVC_ACCESS_KEY_ID }}
+      DVC_SECRET_ACCESS_KEY: ${{ secrets.DVC_SECRET_ACCESS_KEY }}
+      INPUT_FORCE_RETRAIN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.force_retrain || 'false' }}
+      INPUT_N_TRIALS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.n_trials || '' }}
+      INPUT_TUNE_MODELS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tune_models || '' }}
+      INPUT_PROMOTE_CANDIDATE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.promote_candidate || 'false' }}
+      INPUT_RUN_NAME_SUFFIX: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_name_suffix || '' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install "dvc[s3]"
+
+      - name: Load CT settings from params.yaml
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          from pathlib import Path
+          import yaml
+
+          payload = yaml.safe_load(Path("params.yaml").read_text(encoding="utf-8")) or {}
+          train = payload.get("train", {}) or {}
+          mlflow_cfg = payload.get("mlflow", {}) or {}
+          ct = payload.get("continuous_training", {}) or {}
+
+          mapping = {
+              "TRAIN_X_PATH": train.get("x_train_path"),
+              "TRAIN_Y_PATH": train.get("y_train_path"),
+              "VAL_X_PATH": train.get("x_val_path"),
+              "VAL_Y_PATH": train.get("y_val_path"),
+              "MODEL_PATH": train.get("model_path"),
+              "METRICS_PATH": train.get("metrics_path"),
+              "DEFAULT_N_TRIALS": train.get("n_trials"),
+              "DEFAULT_TUNE_MODELS": train.get("tune_models"),
+              "MLFLOW_EXPERIMENT_NAME": mlflow_cfg.get("experiment_name"),
+              "MLFLOW_RUN_NAME": mlflow_cfg.get("run_name"),
+              "MLFLOW_MODEL_NAME": mlflow_cfg.get("register_model_name"),
+              "MLFLOW_CANDIDATE_ALIAS": mlflow_cfg.get("candidate_alias"),
+              "MLFLOW_CANDIDATE_TAG_KEY": mlflow_cfg.get("candidate_tag_key"),
+              "MLFLOW_CANDIDATE_TAG_VALUE": mlflow_cfg.get("candidate_tag_value"),
+              "CT_STATUS_SUMMARY_PATH": ct.get("status_summary_path", "reports/monitoring/status_summary.json"),
+              "CT_DECISION_REPORT_PATH": ct.get("decision_report_path", "reports/monitoring/ct_decision.json"),
+          }
+
+          for env_name, value in mapping.items():
+              if value in (None, ""):
+                  raise SystemExit(f"Missing config for {env_name} in params.yaml")
+              print(f"{env_name}={value}")
+          PY
+
+      - name: Evaluate CT trigger from monitoring status
+        id: gate
+        shell: bash
+        run: |
+          cmd=(
+            python src/evaluate_ct_trigger.py
+            --status-summary-path "$CT_STATUS_SUMMARY_PATH"
+            --output-path "$CT_DECISION_REPORT_PATH"
+          )
+
+          if [[ "$INPUT_FORCE_RETRAIN" == "true" ]]; then
+            cmd+=(--force-retrain)
+          fi
+
+          "${cmd[@]}"
+
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(os.environ["CT_DECISION_REPORT_PATH"]).read_text(encoding="utf-8")
+          )
+
+          print(f"should_retrain={str(payload.get('should_retrain', False)).lower()}")
+          print(f"trigger_source={payload.get('trigger_source', '')}")
+          print("reasons=" + ",".join(payload.get("reasons", [])))
+          PY
+
+      - name: Upload CT decision artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: continuous-training-decision
+          path: ${{ env.CT_DECISION_REPORT_PATH }}
+          if-no-files-found: warn
+
+      - name: Skip CT because monitoring is healthy
+        if: steps.gate.outputs.should_retrain != 'true'
+        shell: bash
+        run: |
+          echo "Continuous training skipped."
+          echo "Trigger source: ${{ steps.gate.outputs.trigger_source }}"
+          echo "Reasons: ${{ steps.gate.outputs.reasons }}"
+
+      - name: Configure MLflow auth for DagsHub
+        if: steps.gate.outputs.should_retrain == 'true'
+        shell: bash
+        run: |
+          if [[ -n "$MLFLOW_TRACKING_URI" && "$MLFLOW_TRACKING_URI" == *"dagshub.com"* ]]; then
+            resolved_username="${MLFLOW_TRACKING_USERNAME:-$DAGSHUB_USERNAME}"
+            resolved_password="${MLFLOW_TRACKING_PASSWORD:-$DAGSHUB_TOKEN}"
+
+            if [[ -z "$resolved_username" || -z "$resolved_password" ]]; then
+              echo "Missing DagsHub MLflow auth secrets." >&2
+              exit 1
+            fi
+
+            echo "MLFLOW_TRACKING_USERNAME=$resolved_username" >> "$GITHUB_ENV"
+            echo "MLFLOW_TRACKING_PASSWORD=$resolved_password" >> "$GITHUB_ENV"
+          fi
+
+      - name: Ensure training assets are available
+        if: steps.gate.outputs.should_retrain == 'true'
+        id: assets
+        shell: bash
+        run: |
+          required_paths=(
+            "$TRAIN_X_PATH"
+            "$TRAIN_Y_PATH"
+            "$VAL_X_PATH"
+            "$VAL_Y_PATH"
+          )
+
+          missing_paths=()
+          for path in "${required_paths[@]}"; do
+            if [[ ! -f "$path" ]]; then
+              missing_paths+=("$path")
+            fi
+          done
+
+          if [[ "${#missing_paths[@]}" -eq 0 ]]; then
+            echo "ct_ready=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Missing local training assets: ${missing_paths[*]}"
+
+          resolved_dvc_access="${DVC_ACCESS_KEY_ID:-$DAGSHUB_TOKEN}"
+          resolved_dvc_secret="${DVC_SECRET_ACCESS_KEY:-$DAGSHUB_TOKEN}"
+
+          if [[ -n "$resolved_dvc_access" && -n "$resolved_dvc_secret" ]]; then
+            export AWS_ACCESS_KEY_ID="$resolved_dvc_access"
+            export AWS_SECRET_ACCESS_KEY="$resolved_dvc_secret"
+            dvc pull "${required_paths[@]}"
+          else
+            echo "::warning::Skipping CT run because training data is not present in the repo and neither DVC secrets nor DAGSHUB_TOKEN are available."
+            echo "ct_ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          for path in "${required_paths[@]}"; do
+            if [[ ! -f "$path" ]]; then
+              echo "::warning::Skipping CT run because required asset '$path' is still unavailable after dvc pull."
+              echo "ct_ready=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+
+          echo "ct_ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Run continuous training
+        if: >
+          steps.gate.outputs.should_retrain == 'true' &&
+          steps.assets.outputs.ct_ready == 'true'
+        shell: bash
+        run: |
+          run_name="$MLFLOW_RUN_NAME"
+          if [[ -n "$INPUT_RUN_NAME_SUFFIX" ]]; then
+            run_name="${run_name}_${INPUT_RUN_NAME_SUFFIX}"
+          else
+            run_name="${run_name}_ct_${GITHUB_RUN_NUMBER}"
+          fi
+
+          n_trials="${INPUT_N_TRIALS:-$DEFAULT_N_TRIALS}"
+          tune_models="${INPUT_TUNE_MODELS:-$DEFAULT_TUNE_MODELS}"
+
+          cmd=(
+            python src/train.py
+            --x_train_path "$TRAIN_X_PATH"
+            --y_train_path "$TRAIN_Y_PATH"
+            --x_val_path "$VAL_X_PATH"
+            --y_val_path "$VAL_Y_PATH"
+            --model_path "$MODEL_PATH"
+            --metrics_path "$METRICS_PATH"
+            --enable_tuning
+            --n_trials "$n_trials"
+            --tune_models "$tune_models"
+            --mlflow_experiment "$MLFLOW_EXPERIMENT_NAME"
+            --mlflow_run_name "$run_name"
+            --register_model_name "$MLFLOW_MODEL_NAME"
+          )
+
+          if [[ -n "$MLFLOW_TRACKING_URI" ]]; then
+            cmd+=(--mlflow_tracking_uri "$MLFLOW_TRACKING_URI")
+          fi
+
+          "${cmd[@]}"
+
+      - name: Upload CT metrics artifact
+        if: >
+          steps.gate.outputs.should_retrain == 'true' &&
+          steps.assets.outputs.ct_ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: continuous-training-metrics
+          path: ${{ env.METRICS_PATH }}
+          if-no-files-found: warn
+
+      - name: Extract registered model version
+        if: >
+          steps.gate.outputs.should_retrain == 'true' &&
+          steps.assets.outputs.ct_ready == 'true'
+        id: modelinfo
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+
+          metrics_path = Path("${{ env.METRICS_PATH }}")
+          if not metrics_path.exists():
+              raise SystemExit("Metrics file missing after CT run.")
+
+          payload = json.loads(metrics_path.read_text(encoding="utf-8"))
+          registered = payload.get("registered_model") or {}
+
+          version = str(registered.get("model_version", "")).strip()
+          run_id = str(registered.get("run_id", "")).strip()
+
+          print(f"model_version={version}")
+          print(f"run_id={run_id}")
+          PY
+
+      - name: Promote retrained model to Candidate
+        if: >
+          steps.gate.outputs.should_retrain == 'true' &&
+          steps.assets.outputs.ct_ready == 'true' &&
+          steps.modelinfo.outputs.model_version != '' &&
+          github.event_name == 'workflow_dispatch' &&
+          env.INPUT_PROMOTE_CANDIDATE == 'true'
+        shell: bash
+        run: |
+          if [[ -z "$MLFLOW_TRACKING_URI" ]]; then
+            echo "Missing GitHub secret: MLFLOW_TRACKING_URI" >&2
+            exit 1
+          fi
+
+          python src/promote_model.py \
+            --tracking-uri "$MLFLOW_TRACKING_URI" \
+            --model-name "$MLFLOW_MODEL_NAME" \
+            --version "${{ steps.modelinfo.outputs.model_version }}" \
+            --candidate-alias "$MLFLOW_CANDIDATE_ALIAS" \
+            --candidate-tag-key "$MLFLOW_CANDIDATE_TAG_KEY" \
+            --candidate-tag-value "$MLFLOW_CANDIDATE_TAG_VALUE"

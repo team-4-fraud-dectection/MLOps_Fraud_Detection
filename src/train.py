@@ -2,6 +2,7 @@ import argparse
 import json
 import logging
 import re
+import sys
 from pathlib import Path
 
 import joblib
@@ -29,7 +30,12 @@ import mlflow.xgboost
 import xgboost as xgb
 from catboost import CatBoostClassifier
 from mlflow.models import infer_signature
-from src.validation import validate_train_validation_inputs
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.validation import validate_train_validation_inputs  # noqa: E402
 
 try:
     import optuna

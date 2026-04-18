@@ -60,7 +60,12 @@ monitoring:
   feedback_log_path: logs/prediction_feedback.jsonl
   drift_report_dir: reports/drift
   performance_report_path: reports/monitoring/performance_summary.json
-  reference_data_path: data/featured/X_val.parquet
+  reference_data_path: data/featured/X_train.parquet
   drift_share_threshold: 0.5
   min_current_records: 30
   performance_f1_threshold: 0.7
+
+continuous_training:
+  status_summary_path: reports/monitoring/status_summary.json
+  decision_report_path: reports/monitoring/ct_decision.json
+  pipeline_scope: train

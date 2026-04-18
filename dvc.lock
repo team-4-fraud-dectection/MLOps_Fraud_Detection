@@ -1,9 +1,9 @@
 schema: '2.0'
 stages:
   preprocess:
-    cmd: python src/preprocess.py --input_path data/merged_train_data.csv 
-      --output_dir data/processed --model_dir models --train_ratio 0.8 
-      --top_k_missing 80 --clip_percentile 0.99 --cat_min_freq 0.0005
+    cmd: python src/preprocess.py --input_path data/merged_train_data.csv --output_dir
+      data/processed --model_dir models --train_ratio 0.8 --top_k_missing 80 --clip_percentile
+      0.99 --cat_min_freq 0.0005
     deps:
     - path: data/merged_train_data.csv
       hash: md5
@@ -36,9 +36,8 @@ stages:
       md5: 26be7338e0f61ac860fb619af7add9ac
       size: 43655
   feature_engineering:
-    cmd: python src/feature_engineering.py --train_input_path 
-      data/processed/train_preprocessed.parquet --val_input_path 
-      data/processed/val_preprocessed.parquet --output_dir data/featured 
+    cmd: python src/feature_engineering.py --train_input_path data/processed/train_preprocessed.parquet
+      --val_input_path data/processed/val_preprocessed.parquet --output_dir data/featured
       --pca_components 2 --target_col isFraud
     deps:
     - path: data/processed/train_preprocessed.parquet
@@ -82,10 +81,9 @@ stages:
       md5: 6e167e3372412432ab738299b7b0468d
       size: 8126
   balance:
-    cmd: python src/balancing.py --x_train_path data/featured/X_train.parquet 
-      --y_train_path data/featured/y_train.parquet --x_val_path 
-      data/featured/X_val.parquet --y_val_path data/featured/y_val.parquet 
-      --output_dir data/balanced --metrics_path metrics/balancing_metrics.json 
+    cmd: python src/balancing.py --x_train_path data/featured/X_train.parquet --y_train_path
+      data/featured/y_train.parquet --x_val_path data/featured/X_val.parquet --y_val_path
+      data/featured/y_val.parquet --output_dir data/balanced --metrics_path metrics/balancing_metrics.json
       --sampling_ratio 0.3 --save_method rus --random_state 42
     deps:
     - path: data/featured/X_train.parquet
@@ -133,12 +131,11 @@ stages:
       md5: d0600236dc26089567ae2796703345f1
       size: 2057
   train:
-    cmd: python src/train.py --x_train_path data/balanced/X_train_rus.parquet 
-      --y_train_path data/balanced/y_train_rus.parquet --x_val_path 
-      data/featured/X_val.parquet --y_val_path data/featured/y_val.parquet 
-      --model_path models/model.pkl --metrics_path metrics/train_metrics.json 
-      --enable_tuning --n_trials 50 --tune_models XGBoost,LightGBM,CatBoost 
-      --mlflow_experiment ieee_fraud_detection --mlflow_run_name tune_v1
+    cmd: python src/train.py --x_train_path data/balanced/X_train_rus.parquet --y_train_path
+      data/balanced/y_train_rus.parquet --x_val_path data/featured/X_val.parquet --y_val_path
+      data/featured/y_val.parquet --model_path models/model.pkl --metrics_path metrics/train_metrics.json
+      --enable_tuning --n_trials 50 --tune_models XGBoost,LightGBM,CatBoost --mlflow_experiment
+      ieee_fraud_detection --mlflow_run_name tune_v1 --register_model_name fraud_detection_model
     deps:
     - path: data/balanced/X_train_rus.parquet
       hash: md5
@@ -158,11 +155,12 @@ stages:
       size: 8126
     - path: src/train.py
       hash: md5
-      md5: 20d2ec6a814803503982d937b38a9ba9
-      size: 22913
+      md5: e7eef5b79f25e677d00ac9abf0a795bc
+      size: 23798
     params:
       params.yaml:
         mlflow.experiment_name: ieee_fraud_detection
+        mlflow.register_model_name: fraud_detection_model
         mlflow.run_name: tune_v1
         train.metrics_path: metrics/train_metrics.json
         train.model_path: models/model.pkl
@@ -175,9 +173,9 @@ stages:
     outs:
     - path: metrics/train_metrics.json
       hash: md5
-      md5: 2000d1c684fde4b708386e2fca1d2d0a
-      size: 9329
+      md5: 5bb1c71e6d0e9de5a309388adb6111cb
+      size: 9303
     - path: models/model.pkl
       hash: md5
-      md5: dd6a9056a02b69951fa216959fbd102b
-      size: 3168239
+      md5: 5f0dfcb99973138eb072798d519247ad
+      size: 9588807
