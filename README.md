@@ -143,6 +143,38 @@ curl -X POST http://127.0.0.1:8000/predict -H "Content-Type: application/json" -
 
 ---
 
+## Lecture Alignment for My Scope
+
+The lecture PDF focuses on the following serving pattern:
+
+- wrap the model with `FastAPI`
+- containerize it with `Docker`
+- expose prediction endpoints
+- monitor model behavior after deployment
+
+This repo stays aligned with that method for the part I am responsible for:
+
+- `src/api.py` exposes `/predict`, `/predict_raw`, `/feedback`, and `/health`
+- `Dockerfile` packages the inference service
+- prediction and feedback logs are written to `logs/`
+- Evidently is used for drift reporting
+- monitoring outputs are summarized into `status_summary.json`
+
+For our team split:
+
+- Kubernetes / Prometheus / Grafana are handled separately by my teammate
+- this repo focuses on the CI/CD and CT automation around the FastAPI service
+
+So the repo is not changing the lecture method. It keeps the same serving pattern, then extends it with automation:
+
+- `quality-ci.yml` for lint + tests
+- `model-registry-promotion.yml` for MLflow registry promotion
+- `continuous-training.yml` for retraining when monitoring signals degradation
+
+These CI/CD and CT pieces are project extensions on top of the lecture workflow, not a different deployment methodology.
+
+---
+
 ## Docker
 
 ### Build image
@@ -167,6 +199,8 @@ docker compose up --build
 
 ## Blue-Green Deployment
 
+This is an optional extension and is not required to follow the lecture flow.
+
 Local blue-green deployment files are in [deploy/bluegreen](deploy/bluegreen/README.md).
 
 Quick start:
@@ -184,6 +218,8 @@ bash scripts/bluegreen-deploy.sh green ieee-fraud-api:green
 ```
 
 ## GCP Cloud Run Deployment
+
+This is an optional extension and is not required to follow the lecture flow.
 
 GCP deployment instructions are in [deploy/gcp/README.md](deploy/gcp/README.md).
 
@@ -294,12 +330,19 @@ How CT works in this repo:
 - if `should_retrain=true`, the local helper reruns the DVC pipeline (`train` stage by default)
 - the GitHub Actions workflow `.github/workflows/continuous-training.yml` follows the same logic and only retrains when monitoring requests it, unless `force_retrain` is set on manual dispatch
 
+Why this still matches the lecture direction:
+
+- the lecture teaches deploying and monitoring a FastAPI-wrapped model after training
+- CT in this repo simply automates the next operational step after monitoring
+- the trigger is based on the same deployment outputs: realized performance and data drift
+- this means CT is an operational extension of the lecture workflow, not a separate methodology
+
 ---
 
 ## Model Information
 
-* Best model: XGBoost (based on AUPRC)
-* Threshold tuned for optimal F1 score
+* Best model is selected automatically by validation AUPRC during training
+* Threshold is tuned for optimal F1 score
 * Model stored at:
 
 ```
