@@ -8,6 +8,8 @@ SCRAPE_WAIT_SECONDS="${SCRAPE_WAIT_SECONDS:-30}"
 RECREATE_CLUSTER="${RECREATE_CLUSTER:-false}"
 IMAGE_LOAD_RETRIES="${IMAGE_LOAD_RETRIES:-5}"
 IMAGE_LOAD_RETRY_DELAY_SECONDS="${IMAGE_LOAD_RETRY_DELAY_SECONDS:-8}"
+HELM_RETRIES="${HELM_RETRIES:-5}"
+HELM_RETRY_DELAY_SECONDS="${HELM_RETRY_DELAY_SECONDS:-15}"
 
 "${ROOT_DIR}/scripts/install-local-k8s-tools.sh" >/dev/null
 export PATH="${ROOT_DIR}/.tools/bin:${PATH}"
@@ -45,18 +47,39 @@ load_image_into_kind() {
   return 1
 }
 
+run_with_retries() {
+  local description="$1"
+  shift
+
+  local attempt
+  for attempt in $(seq 1 "${HELM_RETRIES}"); do
+    if "$@"; then
+      return 0
+    fi
+
+    if [[ "${attempt}" -lt "${HELM_RETRIES}" ]]; then
+      echo "${description} failed on attempt ${attempt}/${HELM_RETRIES}; retrying in ${HELM_RETRY_DELAY_SECONDS}s..." >&2
+      sleep "${HELM_RETRY_DELAY_SECONDS}"
+    fi
+  done
+
+  echo "${description} failed after ${HELM_RETRIES} attempts." >&2
+  return 1
+}
+
 load_image_into_kind
 
 kubectl apply -k "${ROOT_DIR}/deployment/kubernetes"
 kubectl rollout status deployment/ml-api --timeout=300s
 
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
-helm repo update >/dev/null
-helm upgrade --install prom \
-  -n monitoring \
-  --create-namespace \
-  prometheus-community/kube-prometheus-stack \
-  -f "${ROOT_DIR}/deployment/monitoring/kube-prometheus-stack-values.yaml"
+run_with_retries "helm repo update" helm repo update >/dev/null
+run_with_retries "helm upgrade/install kube-prometheus-stack" \
+  helm upgrade --install prom \
+    -n monitoring \
+    --create-namespace \
+    prometheus-community/kube-prometheus-stack \
+    -f "${ROOT_DIR}/deployment/monitoring/kube-prometheus-stack-values.yaml"
 
 kubectl rollout status deployment/prom-grafana -n monitoring --timeout=600s
 kubectl rollout status deployment/prom-kube-prometheus-stack-operator -n monitoring --timeout=600s
