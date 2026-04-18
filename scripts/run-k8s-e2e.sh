@@ -6,6 +6,8 @@ CLUSTER_NAME="${CLUSTER_NAME:-mlops-cluster}"
 IMAGE_NAME="${IMAGE_NAME:-ghcr.io/team-5-fraud-dectection/mlops-fraud-detection:latest}"
 SCRAPE_WAIT_SECONDS="${SCRAPE_WAIT_SECONDS:-30}"
 RECREATE_CLUSTER="${RECREATE_CLUSTER:-false}"
+IMAGE_LOAD_RETRIES="${IMAGE_LOAD_RETRIES:-5}"
+IMAGE_LOAD_RETRY_DELAY_SECONDS="${IMAGE_LOAD_RETRY_DELAY_SECONDS:-8}"
 
 "${ROOT_DIR}/scripts/install-local-k8s-tools.sh" >/dev/null
 export PATH="${ROOT_DIR}/.tools/bin:${PATH}"
@@ -21,9 +23,29 @@ if ! kind get clusters | grep -qx "${CLUSTER_NAME}"; then
 fi
 
 kubectl config use-context "kind-${CLUSTER_NAME}" >/dev/null
+kubectl wait --for=condition=Ready nodes --all --timeout=300s
+sleep 5
 
 docker build -t "${IMAGE_NAME}" "${ROOT_DIR}"
-kind load docker-image "${IMAGE_NAME}" --name "${CLUSTER_NAME}"
+
+load_image_into_kind() {
+  local attempt
+  for attempt in $(seq 1 "${IMAGE_LOAD_RETRIES}"); do
+    if kind load docker-image "${IMAGE_NAME}" --name "${CLUSTER_NAME}"; then
+      return 0
+    fi
+
+    if [[ "${attempt}" -lt "${IMAGE_LOAD_RETRIES}" ]]; then
+      echo "kind image load failed on attempt ${attempt}/${IMAGE_LOAD_RETRIES}; retrying in ${IMAGE_LOAD_RETRY_DELAY_SECONDS}s..." >&2
+      sleep "${IMAGE_LOAD_RETRY_DELAY_SECONDS}"
+    fi
+  done
+
+  echo "Failed to load image into kind after ${IMAGE_LOAD_RETRIES} attempts." >&2
+  return 1
+}
+
+load_image_into_kind
 
 kubectl apply -k "${ROOT_DIR}/deployment/kubernetes"
 kubectl rollout status deployment/ml-api --timeout=300s
