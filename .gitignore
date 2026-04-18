@@ -12,7 +12,8 @@ Thumbs.db
 
 # Data & models
 data/
-models/
+models/*
+!models/model.pkl
 
 # MLflow and monitoring
 mlruns/
