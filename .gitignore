@@ -15,6 +15,7 @@ Thumbs.db
 data/
 models/*
 !models/model.pkl
+!models/preprocessor_v1.pkl
 
 # MLflow and monitoring
 mlruns/
