@@ -85,8 +85,25 @@ def main():
     if not common_columns:
         raise ValueError("No overlapping columns found between reference and current datasets.")
 
-    reference_df = reference_df[common_columns].copy()
-    current_df = current_df[common_columns].copy()
+    numeric_reference = {}
+    numeric_current = {}
+    dropped_non_numeric = []
+    for column in common_columns:
+        ref_series = pd.to_numeric(reference_df[column], errors="coerce")
+        cur_series = pd.to_numeric(current_df[column], errors="coerce")
+        if ref_series.notna().sum() == 0 or cur_series.notna().sum() == 0:
+            dropped_non_numeric.append(column)
+            continue
+        numeric_reference[column] = ref_series.replace([float("inf"), float("-inf")], pd.NA).fillna(0.0)
+        numeric_current[column] = cur_series.replace([float("inf"), float("-inf")], pd.NA).fillna(0.0)
+
+    if not numeric_reference:
+        raise ValueError(
+            "No numeric-compatible columns remain after aligning reference and current datasets."
+        )
+
+    reference_df = pd.DataFrame(numeric_reference).astype("float32")
+    current_df = pd.DataFrame(numeric_current).astype("float32")
 
     report = Report(
         [DataDriftPreset(drift_share=args.drift_share_threshold)],
@@ -120,7 +137,8 @@ def main():
         "current_path": args.current_path or args.prediction_log_path,
         "reference_rows": int(len(reference_df)),
         "current_rows": int(len(current_df)),
-        "monitored_columns": common_columns,
+        "monitored_columns": list(reference_df.columns),
+        "dropped_non_numeric_columns": dropped_non_numeric,
         "drift_share_threshold": float(args.drift_share_threshold),
         "drifted_columns_count": int(drift_value.get("count", 0) or 0),
         "drifted_columns_share": float(drift_value.get("share", 0.0) or 0.0),
