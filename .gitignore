@@ -2,11 +2,17 @@
 .dvc/cache/
 .dvc/config.local
 
+# Local environment
+venv/
+.env
+.DS_Store
+Thumbs.db
+
 # Data & models
 data/
 models/
 
-# MLflow
+# MLflow and monitoring
 mlruns/
 logs/
 reports/
