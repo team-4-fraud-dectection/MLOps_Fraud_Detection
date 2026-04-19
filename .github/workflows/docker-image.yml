@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - main
-      - merged
-      - CI/CD
-      - ldtesting
     tags:
       - "v*.*.*"
   pull_request:
@@ -31,7 +28,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/team-5-fraud-dectection/mlops-fraud-detection
+          images: ghcr.io/${{ github.repository_owner }}/mlops-fraud-detection
           tags: |
             type=ref,event=branch
             type=ref,event=pr
