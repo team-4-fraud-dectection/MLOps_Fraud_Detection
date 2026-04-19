@@ -18,6 +18,7 @@ from src.monitoring import (
     build_prediction_events,
 )
 from src.validation import validate_feature_matrix, validate_model_artifact
+from src.risk_score import RiskScoringEngine
 
 
 logging.basicConfig(
@@ -138,6 +139,7 @@ def init_model_artifact() -> tuple[dict[str, Any] | None, str | None]:
         logging.exception("Primary model artifact failed to initialize")
         return None, str(exc)
 
+risk_engine = RiskScoringEngine()
 
 artifact, artifact_error = init_model_artifact()
 model = artifact["model"] if artifact else None
@@ -286,9 +288,15 @@ def predict_raw(request: RawPredictionRequest):
 
         enriched_results = []
         for index, result in enumerate(results):
+            risk_info = risk_engine.generate(result["fraud_probability"])
+
             enriched_results.append(
                 {
                     **result,
+                    "risk_score": risk_info["risk_score"],
+                    "risk_level": risk_info["risk_level"],
+                    "verification_required": risk_info["verification_required"],
+                    "recommended_action": risk_info["recommended_action"],
                     "request_id": logged_events[index]["request_id"],
                     "prediction_id": logged_events[index]["prediction_id"],
                 }
@@ -304,7 +312,6 @@ def predict_raw(request: RawPredictionRequest):
     except Exception as e:
         logging.exception("Raw prediction failed")
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @app.post("/feedback")
 def feedback(request: FeedbackRequest):
