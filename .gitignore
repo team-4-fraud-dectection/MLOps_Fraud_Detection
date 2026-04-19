@@ -31,3 +31,6 @@ __pycache__/
 
 # Notebook
 *.ipynb
+
+# Local report bundles
+FraudDetection_report_package_*.zip

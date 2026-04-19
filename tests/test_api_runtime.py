@@ -15,6 +15,26 @@ class DummyModel:
         return np.column_stack([1.0 - positive, positive])
 
 
+class DummyRawPipeline:
+    model_name = "raw_demo_model"
+    threshold = 0.5
+
+    def prepare_raw_features(self, records, context=None):
+        return api.pd.DataFrame([{"feature_a": float(record["TransactionAmt"])} for record in records])
+
+    def predict_feature_matrix(self, prepared_features):
+        return [
+            {
+                "index": index,
+                "fraud_probability": 0.91,
+                "prediction": 1,
+                "threshold": self.threshold,
+                "model_name": self.model_name,
+            }
+            for index in range(len(prepared_features))
+        ]
+
+
 def test_health_reports_raw_pipeline_status():
     response = client.get("/health")
 
@@ -123,3 +143,27 @@ def test_feedback_endpoint_appends_feedback_log(monkeypatch, tmp_path):
     assert logged[0]["event_type"] == "feedback"
     assert logged[0]["actual_label"] == 1
     assert logged[0]["prediction_id"] == "req-1:0"
+
+
+def test_predict_raw_returns_risk_fields(monkeypatch, tmp_path):
+    prediction_log = tmp_path / "predictions.jsonl"
+    monkeypatch.setattr(api, "PREDICTION_LOG_PATH", prediction_log)
+    monkeypatch.setattr(api, "raw_pipeline", DummyRawPipeline())
+    monkeypatch.setattr(api, "raw_pipeline_error", None)
+
+    response = client.post(
+        "/predict_raw",
+        json={"records": [{"TransactionAmt": 125.0}]},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["n_records"] == 1
+
+    result = payload["results"][0]
+    assert result["prediction"] == 1
+    assert result["risk_score"] == 91.0
+    assert result["risk_level"] == "VERY_HIGH"
+    assert result["verification_required"] == "Blocked"
+    assert "recommended_action" in result
+    assert prediction_log.exists()

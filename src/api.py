@@ -17,6 +17,7 @@ from src.monitoring import (
     build_feedback_events,
     build_prediction_events,
 )
+from src.risk_score import RiskScoringEngine
 from src.validation import validate_feature_matrix, validate_model_artifact
 
 
@@ -143,6 +144,7 @@ artifact, artifact_error = init_model_artifact()
 model = artifact["model"] if artifact else None
 model_name = artifact["model_name"] if artifact else "unavailable"
 threshold = float(artifact["threshold"]) if artifact else None
+risk_engine = RiskScoringEngine()
 
 app = FastAPI(
     title="IEEE Fraud Detection API",
@@ -286,9 +288,14 @@ def predict_raw(request: RawPredictionRequest):
 
         enriched_results = []
         for index, result in enumerate(results):
+            risk_info = risk_engine.generate(result["fraud_probability"])
             enriched_results.append(
                 {
                     **result,
+                    "risk_score": risk_info["risk_score"],
+                    "risk_level": risk_info["risk_level"],
+                    "verification_required": risk_info["verification_required"],
+                    "recommended_action": risk_info["recommended_action"],
                     "request_id": logged_events[index]["request_id"],
                     "prediction_id": logged_events[index]["prediction_id"],
                 }
