@@ -44,10 +44,7 @@ jobs:
     needs: ci
     if: >
       github.event_name == 'workflow_dispatch' ||
-      github.ref == 'refs/heads/main' ||
-      github.ref == 'refs/heads/master' ||
-      github.ref == 'refs/heads/ldtesting' ||
-      github.ref == 'refs/heads/CI/CD'
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     env:
       MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
@@ -71,7 +68,37 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Check promotion prerequisites
+        id: preflight
+        shell: bash
+        run: |
+          can_promote=true
+          reason=""
+
+          if [[ -z "$MLFLOW_TRACKING_URI" ]]; then
+            can_promote=false
+            reason="Skipping promotion because MLFLOW_TRACKING_URI secret is not configured."
+          elif [[ "$MLFLOW_TRACKING_URI" == *"dagshub.com"* ]]; then
+            resolved_username="${MLFLOW_TRACKING_USERNAME:-$DAGSHUB_USERNAME}"
+            resolved_password="${MLFLOW_TRACKING_PASSWORD:-$DAGSHUB_TOKEN}"
+
+            if [[ -z "$resolved_username" || -z "$resolved_password" ]]; then
+              can_promote=false
+              reason="Skipping promotion because DagsHub/MLflow auth secrets are not configured."
+            else
+              echo "MLFLOW_TRACKING_USERNAME=$resolved_username" >> "$GITHUB_ENV"
+              echo "MLFLOW_TRACKING_PASSWORD=$resolved_password" >> "$GITHUB_ENV"
+            fi
+          fi
+
+          echo "can_promote=$can_promote" >> "$GITHUB_OUTPUT"
+
+          if [[ "$can_promote" != "true" ]]; then
+            echo "$reason"
+          fi
+
       - name: Load registry settings from params.yaml
+        if: steps.preflight.outputs.can_promote == 'true'
         shell: bash
         run: |
           python - <<'PY' >> "$GITHUB_ENV"
@@ -93,26 +120,15 @@ jobs:
               print(f"{env_name}={match.group(1).strip()}")
           PY
 
+      - name: Skip promotion because registry secrets are unavailable
+        if: steps.preflight.outputs.can_promote != 'true'
+        shell: bash
+        run: echo "Model registry promotion skipped for this run."
+
       - name: Promote model version to Candidate
+        if: steps.preflight.outputs.can_promote == 'true'
         shell: bash
         run: |
-          if [ -z "$MLFLOW_TRACKING_URI" ]; then
-            echo "Missing GitHub secret: MLFLOW_TRACKING_URI" >&2
-            exit 1
-          fi
-
-          if [[ "$MLFLOW_TRACKING_URI" == *"dagshub.com"* ]]; then
-            export MLFLOW_TRACKING_USERNAME="${MLFLOW_TRACKING_USERNAME:-$DAGSHUB_USERNAME}"
-            export MLFLOW_TRACKING_PASSWORD="${MLFLOW_TRACKING_PASSWORD:-$DAGSHUB_TOKEN}"
-
-            if [ -z "$MLFLOW_TRACKING_USERNAME" ] || [ -z "$MLFLOW_TRACKING_PASSWORD" ]; then
-              echo "DagsHub MLflow requires auth secrets." >&2
-              echo "Add MLFLOW_TRACKING_USERNAME + MLFLOW_TRACKING_PASSWORD" >&2
-              echo "or DAGSHUB_USERNAME + DAGSHUB_TOKEN." >&2
-              exit 1
-            fi
-          fi
-
           cmd=(
             python src/promote_model.py
             --tracking-uri "$MLFLOW_TRACKING_URI"
