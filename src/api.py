@@ -189,65 +189,6 @@ def health():
     }
 
 
-@app.post("/predict")
-def predict(request: PredictionRequest):
-    try:
-        if not request.records:
-            raise HTTPException(status_code=400, detail="records must not be empty")
-
-        if artifact is None or model is None:
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    "Model artifact is unavailable. "
-                    f"Missing or invalid artifact: {artifact_error}"
-                ),
-            )
-
-        df_input = pd.DataFrame(request.records)
-        X = prepare_features(df_input, artifact)
-        probabilities = get_probabilities(model, X)
-        predictions = (probabilities >= threshold).astype(int)
-        logged_records = X.to_dict(orient="records")
-        logged_events = build_prediction_events(
-            logged_records,
-            probabilities,
-            predictions,
-            endpoint="/predict",
-            model_name=model_name,
-            threshold=threshold,
-            model_ready=True,
-        )
-
-        try:
-            append_jsonl(PREDICTION_LOG_PATH, logged_events)
-        except Exception:
-            logging.exception("Failed to write prediction logs")
-
-        results = []
-        for i, row in enumerate(request.records):
-            results.append({
-                "index": i,
-                "request_id": logged_events[i]["request_id"],
-                "prediction_id": logged_events[i]["prediction_id"],
-                "fraud_probability": float(probabilities[i]),
-                "prediction": int(predictions[i]),
-                "threshold": threshold,
-                "model_name": model_name,
-            })
-
-        return {
-            "n_records": len(results),
-            "results": results,
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.exception("Prediction failed")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @app.post("/predict_raw")
 def predict_raw(request: RawPredictionRequest):
     try:
