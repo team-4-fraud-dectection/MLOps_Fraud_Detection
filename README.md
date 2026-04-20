@@ -121,13 +121,15 @@ DAGSHUB_TOKEN=<your-dagshub-access-token>
 ## Streamlit Dashboard (UI Demo)
 
 ```bash
-streamlit run src/app.py
+streamlit run src/streamlit.py
 ```
 The dashboard provides:
 - Interactive fraud detection demo
 - Visualization of prediction results
 
-Use `sample_request.json` to test prediction:
+Use `request_streamlit.json` to test the upload flow in the dashboard.
+
+Use `sample_request.json` to test the raw inference API directly:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/predict_raw -H "Content-Type: application/json" --data @sample_request.json
@@ -157,6 +159,32 @@ So the project is no longer only a CI/CD slice. It now includes the full product
 - `.github/workflows/model-registry-promotion.yml` promotes MLflow candidate versions
 - `.github/workflows/continuous-training.yml` retrains only when monitoring requests it
 - `deployment.yaml`, `service.yaml`, and `deployment/monitoring/servicemonitor.yaml` cover the Kubernetes deployment path from the lecture
+
+---
+
+## Architecture Diagram & Demo Automation
+
+- End-to-end architecture diagrams live in [docs/system_architecture.md](docs/system_architecture.md).
+- The live demo runbook lives in [docs/demo_runbook.md](docs/demo_runbook.md).
+- Demo helper scripts:
+  - `scripts/demo-prepare.sh` starts MLflow, FastAPI, Streamlit, and optionally the Kubernetes monitoring stack
+  - `scripts/demo-warmup.sh` sends warm-up inference traffic so Prometheus and Grafana are populated
+  - `scripts/demo-open-tabs.sh` opens the browser tabs and editor files used during the recording
+  - `scripts/demo-stop.sh` cleans up the local demo processes after the recording
+
+Typical local demo flow:
+
+```bash
+bash scripts/demo-prepare.sh
+bash scripts/demo-warmup.sh
+bash scripts/demo-open-tabs.sh
+```
+
+When the recording is finished:
+
+```bash
+bash scripts/demo-stop.sh
+```
 
 ---
 
