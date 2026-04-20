@@ -72,4 +72,5 @@ monitoring:
 continuous_training:
   status_summary_path: reports/monitoring/status_summary.json
   decision_report_path: reports/monitoring/ct_decision.json
+  summary_report_path: reports/monitoring/ct_summary.json
   pipeline_scope: train

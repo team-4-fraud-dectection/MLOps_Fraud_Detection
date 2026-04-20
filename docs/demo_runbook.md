@@ -49,6 +49,7 @@ This runbook turns the repository into a repeatable live demo setup for video re
 - `README.md`
 - `dvc.yaml`
 - `metrics/train_metrics.json`
+- `reports/monitoring/ct_summary.json`
 - `deployment/kubernetes/deployment.yaml`
 - `.github/workflows/quality-ci.yml`
 - `.github/workflows/continuous-training.yml`

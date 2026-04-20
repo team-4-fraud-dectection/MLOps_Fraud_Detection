@@ -445,8 +445,22 @@ How CT works in this repo:
 
 - `monitor_status.py` writes `reports/monitoring/status_summary.json`
 - `evaluate_ct_trigger.py` reads that file and decides whether retraining is required
+- `ct_summary.py` snapshots the model and registry state before retraining and compares it with the post-training result
 - if `should_retrain=true`, the local helper reruns the DVC pipeline (`train` stage by default)
 - the GitHub Actions workflow `.github/workflows/continuous-training.yml` follows the same logic and only retrains when monitoring requests it, unless `force_retrain` is set on manual dispatch
+
+CT now also writes a report-friendly summary to:
+
+```text
+reports/monitoring/ct_summary.json
+```
+
+That file includes:
+
+- the monitoring-driven trigger reason
+- the model / MLflow version trace before retraining
+- the model / MLflow version trace after retraining
+- delta metrics such as tuned F1 and AUPRC before vs. after the CT run
 
 Why this still matches the lecture direction:
 

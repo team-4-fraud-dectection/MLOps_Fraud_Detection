@@ -92,6 +92,7 @@ jobs:
               "MLFLOW_CANDIDATE_TAG_VALUE": mlflow_cfg.get("candidate_tag_value"),
               "CT_STATUS_SUMMARY_PATH": ct.get("status_summary_path", "reports/monitoring/status_summary.json"),
               "CT_DECISION_REPORT_PATH": ct.get("decision_report_path", "reports/monitoring/ct_decision.json"),
+              "CT_SUMMARY_REPORT_PATH": ct.get("summary_report_path", "reports/monitoring/ct_summary.json"),
           }
 
           for env_name, value in mapping.items():
@@ -136,6 +137,15 @@ jobs:
           name: continuous-training-decision
           path: ${{ env.CT_DECISION_REPORT_PATH }}
           if-no-files-found: warn
+
+      - name: Initialize CT summary
+        shell: bash
+        run: |
+          python src/ct_summary.py init \
+            --decision-path "$CT_DECISION_REPORT_PATH" \
+            --status-summary-path "$CT_STATUS_SUMMARY_PATH" \
+            --train-metrics-path "$METRICS_PATH" \
+            --output-path "$CT_SUMMARY_REPORT_PATH"
 
       - name: Skip CT because monitoring is healthy
         if: steps.gate.outputs.should_retrain != 'true'
@@ -211,6 +221,18 @@ jobs:
 
           echo "ct_ready=true" >> "$GITHUB_OUTPUT"
 
+      - name: Mark CT summary when assets are unavailable
+        if: >
+          steps.gate.outputs.should_retrain == 'true' &&
+          steps.assets.outputs.ct_ready != 'true'
+        shell: bash
+        run: |
+          python src/ct_summary.py mark \
+            --summary-path "$CT_SUMMARY_REPORT_PATH" \
+            --output-path "$CT_SUMMARY_REPORT_PATH" \
+            --run-status "skipped_missing_assets" \
+            --note "Continuous training skipped because required training assets were unavailable."
+
       - name: Run continuous training
         if: >
           steps.gate.outputs.should_retrain == 'true' &&
@@ -249,6 +271,17 @@ jobs:
 
           "${cmd[@]}"
 
+      - name: Finalize CT summary
+        if: >
+          steps.gate.outputs.should_retrain == 'true' &&
+          steps.assets.outputs.ct_ready == 'true'
+        shell: bash
+        run: |
+          python src/ct_summary.py finalize \
+            --summary-path "$CT_SUMMARY_REPORT_PATH" \
+            --train-metrics-path "$METRICS_PATH" \
+            --output-path "$CT_SUMMARY_REPORT_PATH"
+
       - name: Upload CT metrics artifact
         if: >
           steps.gate.outputs.should_retrain == 'true' &&
@@ -257,6 +290,13 @@ jobs:
         with:
           name: continuous-training-metrics
           path: ${{ env.METRICS_PATH }}
+          if-no-files-found: warn
+
+      - name: Upload CT summary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: continuous-training-summary
+          path: ${{ env.CT_SUMMARY_REPORT_PATH }}
           if-no-files-found: warn
 
       - name: Extract registered model version
