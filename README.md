@@ -345,7 +345,9 @@ Notes:
 The repository now includes monitoring assets in [deployment/monitoring](deployment/monitoring/README.md):
 
 - `deployment/monitoring/servicemonitor.yaml`
+- `deployment/monitoring/prometheusrule.yaml`
 - `deployment/monitoring/kube-prometheus-stack-values.yaml`
+- `deployment/monitoring/grafana-dashboard.json`
 
 Install the monitoring stack:
 
@@ -367,19 +369,22 @@ If you want one command for the whole flow, `scripts/run-k8s-e2e.sh` already per
 - Docker image build + `kind load docker-image`
 - API deployment rollout
 - Prometheus/Grafana installation
-- `ServiceMonitor` apply
+- `ServiceMonitor` + `PrometheusRule` apply
 - scrape verification against Prometheus API
 
 Access:
 
 - Prometheus: `http://localhost:30300`
 - Grafana: `http://localhost:30200`
+- Built-in dashboard: `Fraud Detection API Overview`
 
 This matches the lecture path of:
 
 - instrument FastAPI
 - expose `/metrics`
 - scrape with `ServiceMonitor`
+- visualize live API + model metrics in Grafana
+- alert on downtime, latency, error rate, and fraud spikes
 - visualize in Prometheus / Grafana
 
 ## Continuous Training (CT)

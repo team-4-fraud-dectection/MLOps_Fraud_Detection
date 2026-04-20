@@ -2,6 +2,10 @@ grafana:
   service:
     type: NodePort
     nodePort: 30200
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: ALL
 
 prometheus:
   service:

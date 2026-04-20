@@ -31,3 +31,5 @@ def test_monitoring_kustomize_bundle_builds():
 
     assert result.returncode == 0, result.stderr
     assert "kind: ServiceMonitor" in result.stdout
+    assert "kind: PrometheusRule" in result.stdout
+    assert "grafana_dashboard: \"1\"" in result.stdout

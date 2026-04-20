@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import json
 import yaml
 
 
@@ -39,6 +40,31 @@ def test_servicemonitor_scrapes_metrics_endpoint():
     assert service_monitor["spec"]["selector"]["matchLabels"]["app"] == "ml-api"
     assert endpoint["port"] == "http"
     assert endpoint["path"] == "/metrics"
+
+
+def test_prometheusrule_defines_monitoring_alerts():
+    prometheus_rule = load_yaml("deployment/monitoring/prometheusrule.yaml")
+    alert_names = [rule["alert"] for rule in prometheus_rule["spec"]["groups"][0]["rules"]]
+
+    assert prometheus_rule["kind"] == "PrometheusRule"
+    assert prometheus_rule["metadata"]["labels"]["release"] == "prom"
+    assert alert_names == [
+        "MlApiDown",
+        "MlApiHighErrorRate",
+        "MlApiHighLatencyP95",
+        "MlApiFraudSpike",
+    ]
+
+
+def test_grafana_dashboard_json_contains_project_panels():
+    dashboard = json.loads(
+        (PROJECT_ROOT / "deployment/monitoring/grafana-dashboard.json").read_text(encoding="utf-8")
+    )
+    panel_titles = [panel["title"] for panel in dashboard["panels"]]
+
+    assert dashboard["title"] == "Fraud Detection API Overview"
+    assert "Fraud Predictions (Last 5m)" in panel_titles
+    assert "Mean Fraud Probability (5m)" in panel_titles
 
 
 def test_kind_cluster_config_maps_api_and_monitoring_nodeports():

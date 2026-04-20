@@ -122,6 +122,12 @@ def test_predict_logs_events_and_returns_ids(monkeypatch, tmp_path):
     assert abs(logged[0]["feature__feature_a"] - 1.23) < 1e-6
     assert inference_log.exists()
 
+    metrics_response = client.get("/metrics")
+    assert metrics_response.status_code == 200
+    assert "fraud_predictions_total" in metrics_response.text
+    assert "fraud_prediction_probability_bucket" in metrics_response.text
+    assert "fraud_prediction_batch_rate" in metrics_response.text
+
 
 def test_feedback_endpoint_appends_feedback_log(monkeypatch, tmp_path):
     feedback_log = tmp_path / "prediction_feedback.jsonl"

@@ -6,6 +6,7 @@ xgboost==3.0.5
 catboost==1.2.10
 joblib==1.5.3
 fastapi==0.135.3
+prometheus-client==0.21.1
 prometheus-fastapi-instrumentator==6.1.0
 httpx==0.28.1
 uvicorn[standard]==0.44.0

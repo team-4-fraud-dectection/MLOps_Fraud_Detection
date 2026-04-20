@@ -144,6 +144,19 @@ with urllib.request.urlopen(f"http://127.0.0.1:30300/api/v1/query?query={query}"
 print(json.dumps(data, indent=2)[:2000])
 PY
 
+printf '\n\nFraud prediction metric sample:\n'
+python - <<'PY'
+import json
+import urllib.parse
+import urllib.request
+
+query = urllib.parse.quote('sum(increase(fraud_predictions_total{prediction="fraud"}[5m]))')
+with urllib.request.urlopen(f"http://127.0.0.1:30300/api/v1/query?query={query}", timeout=20) as response:
+    data = json.load(response)
+print(json.dumps(data, indent=2)[:1200])
+PY
+
 printf '\n\nGrafana: http://127.0.0.1:30200\n'
 printf 'Prometheus: http://127.0.0.1:30300\n'
 printf 'API docs: http://127.0.0.1:30007/docs\n'
+printf 'Grafana dashboard: Fraud Detection API Overview\n'

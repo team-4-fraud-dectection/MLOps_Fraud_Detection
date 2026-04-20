@@ -8,6 +8,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from prometheus_client import Counter, Gauge, Histogram, REGISTRY
 from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel, Field
 
@@ -193,6 +194,59 @@ raw_pipeline_error: str | None = None
 risk_engine = RiskScoringEngine()
 
 
+def get_or_create_metric(metric_cls, name: str, documentation: str, *args, **kwargs):
+    try:
+        return metric_cls(name, documentation, *args, registry=REGISTRY, **kwargs)
+    except ValueError:
+        collector = (
+            REGISTRY._names_to_collectors.get(name)
+            or REGISTRY._names_to_collectors.get(f"{name}_total")
+            or REGISTRY._names_to_collectors.get(f"{name}_bucket")
+        )
+        if collector is None:
+            raise
+        return collector
+
+
+FRAUD_PREDICTIONS = get_or_create_metric(
+    Counter,
+    "fraud_predictions",
+    "Total fraud prediction outcomes served by the API.",
+    labelnames=("endpoint", "prediction"),
+)
+FRAUD_PREDICTION_PROBABILITY = get_or_create_metric(
+    Histogram,
+    "fraud_prediction_probability",
+    "Observed fraud probabilities emitted by the API.",
+    labelnames=("endpoint",),
+    buckets=(0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9, 1.0),
+)
+FRAUD_PREDICTION_BATCH_RATE = get_or_create_metric(
+    Gauge,
+    "fraud_prediction_batch_rate",
+    "Share of fraud predictions in the most recent batch.",
+    labelnames=("endpoint",),
+)
+
+
+def record_prediction_metrics(
+    endpoint: str,
+    probabilities: np.ndarray,
+    predictions: np.ndarray,
+) -> None:
+    if len(predictions) == 0:
+        return
+
+    FRAUD_PREDICTION_BATCH_RATE.labels(endpoint=endpoint).set(float(np.mean(predictions)))
+    for probability, prediction in zip(probabilities, predictions):
+        prediction_label = "fraud" if int(prediction) == 1 else "legit"
+        FRAUD_PREDICTIONS.labels(
+            endpoint=endpoint,
+            prediction=prediction_label,
+        ).inc()
+        FRAUD_PREDICTION_PROBABILITY.labels(endpoint=endpoint).observe(float(probability))
+
+
 def refresh_runtime_state() -> None:
     global artifact, artifact_error, model, model_name, threshold, raw_pipeline, raw_pipeline_error
 
@@ -273,6 +327,7 @@ def predict(request: PredictionRequest):
         X = prepare_features(df_input, artifact)
         probabilities = get_probabilities(model, X)
         predictions = (probabilities >= threshold).astype(int)
+        record_prediction_metrics("/predict", probabilities, predictions)
         logged_records = X.to_dict(orient="records")
         logged_events = build_prediction_events(
             logged_records,
@@ -348,6 +403,7 @@ def predict_raw(request: RawPredictionRequest):
 
         probabilities = np.array([row["fraud_probability"] for row in results], dtype=float)
         predictions = np.array([row["prediction"] for row in results], dtype=int)
+        record_prediction_metrics("/predict_raw", probabilities, predictions)
         logged_events = build_prediction_events(
             prepared_features.to_dict(orient="records"),
             probabilities,

@@ -1,0 +1,56 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: fraud-detection-api-alerts
+  namespace: monitoring
+  labels:
+    release: prom
+spec:
+  groups:
+    - name: fraud-detection-api.rules
+      rules:
+        - alert: MlApiDown
+          expr: absent(up{job="ml-api-service"}) or max_over_time(up{job="ml-api-service"}[2m]) == 0
+          for: 2m
+          labels:
+            severity: critical
+            service: ml-api
+          annotations:
+            summary: ml-api is unavailable
+            description: The fraud detection API has not reported any healthy Prometheus target for at least 2 minutes.
+        - alert: MlApiHighErrorRate
+          expr: |
+            (
+              sum(rate(http_requests_total{job="ml-api-service",status!~"2.."}[5m]))
+              /
+              clamp_min(sum(rate(http_requests_total{job="ml-api-service"}[5m])), 0.001)
+            ) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+            service: ml-api
+          annotations:
+            summary: ml-api error rate is above 5%
+            description: The fraud detection API has served more than 5% non-2xx responses over the last 10 minutes.
+        - alert: MlApiHighLatencyP95
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (le) (rate(http_request_duration_seconds_bucket{job="ml-api-service"}[5m]))
+            ) > 1
+          for: 10m
+          labels:
+            severity: warning
+            service: ml-api
+          annotations:
+            summary: ml-api p95 latency is above 1 second
+            description: The 95th percentile latency for the fraud detection API stayed above 1 second for 10 minutes.
+        - alert: MlApiFraudSpike
+          expr: sum(increase(fraud_predictions_total{job="ml-api-service",prediction="fraud"}[10m])) > 10
+          for: 5m
+          labels:
+            severity: info
+            service: ml-api
+          annotations:
+            summary: fraud prediction spike detected
+            description: The API emitted more than 10 fraud predictions within 10 minutes.
