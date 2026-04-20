@@ -1,56 +1,58 @@
-## Setup
+# MLOps Fraud Detection System
 
-### 1. Clone repository
+This project implements an end-to-end transaction-level fraud detection system. It covers the full lifecycle of machine learning models, including data versioning, feature engineering, training, deployment, monitoring, and  integration/continuous delivery (CI/CD). The goal is to provide a scalable, production-ready system to detect fraudulent activities in real-time.
 
-```bash
-git clone https://github.com/team-5-fraud-dectection/MLOps_Fraud_Detection.git
-cd MLOps_Fraud_Detection
-git checkout merged
-````
-
----
-
-### 2. Install dependencies
-
-```bash
-pip install -r requirements.txt
+## Project Structure
+```text
+fraud-detection-mlops/
+├── .dvc/                # DVC tracking configuration
+├── .github/workflows/   # GitHub Actions workflows
+├── artifacts/           # Generated artifacts (features, pipelines)
+├── scripts/             # Automation scripts for demos & deployments
+├── src/                 # Core ML and API code
+├── tests/               # Unit and integration tests
+├── deploy/              # Deployment configs (blue-green, GCP)
+├── deployment/          # Kubernetes & monitoring manifests
+├── streamlit/           # Dashboard for UI demo
+├── data/                # DVC-tracked datasets
+├── models/              # Trained models and preprocessors
+├── params.yaml          # Project hyperparameters
+├── legacy/              # Legacy preprocessing and feature engineering
+├── metrics/             # Metrics storage
+├── Dockerfile           # Docker build instructions
+├── compose.yaml         # Docker Compose setup
+├── requirements.txt     # Python dependencies
+└── README.md            # Project documentation
 ```
 
+## Limitations & Future Work
+- Monitoring currently based on replayed validation records, not live production traffic.
+- Retraining trigger threshold may be too aggressive and requires recalibration.
+- Future work: validation under real traffic, long-term uptime testing, refined retraining policies.
+
+## Quick Start
+
+### 1. Clone & Setup
+Clone the repository and install dependencies:
+```bash
+git clone https://github.com/team-4-fraud-dectection/MLOps_Fraud_Detection.git
+cd MLOps_Fraud_Detection
+pip install -r requirements.txt
+```
 ---
 
-## Data (DVC)
-
-### Configure DVC remote (DagsHub)
-
+### 2. Data & Model Pipeline
+Configure DVC remote (one-time setup)
 ```bash
 dvc remote add -d origin s3://dvc
 dvc remote modify origin endpointurl https://dagshub.com/rizerize-1/DVC_Fraud_Detection.s3
 ```
 
-PowerShell:
-
-```powershell
-$DAGSHUB_TOKEN="YOUR_TOKEN"
-dvc remote modify --local origin access_key_id $DAGSHUB_TOKEN
-dvc remote modify --local origin secret_access_key $DAGSHUB_TOKEN
-```
-
----
-
-### Pull data and artifacts
-
+Pull data and run full pipeline
 ```bash
 dvc pull
-```
-
----
-
-## Run full pipeline
-
-```bash
 dvc repro
 ```
-
 This will:
 
 * preprocess data
@@ -61,21 +63,20 @@ This will:
 
 ---
 
-## MLflow (Experiment Tracking)
+### 3. Service & Experiment Tracking
 
 Start MLflow server:
 
 ```bash
 mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlruns --host 127.0.0.1 --port 5000
 ```
+Run API:
 
-Open UI:
-
+```bash
+uvicorn src.api:app --reload
 ```
-http://127.0.0.1:5000
-```
 
-### Model Registry Promotion
+## Model Registry Promotion
 
 The training pipeline now registers the champion model to MLflow using
 `mlflow.register_model_name` from `params.yaml`.
@@ -117,28 +118,19 @@ DAGSHUB_TOKEN=<your-dagshub-access-token>
 
 ---
 
-## API (Live Inference)
-
-Run API:
+## Streamlit Dashboard (UI Demo)
 
 ```bash
-uvicorn src.api:app --reload
+streamlit run src/app.py
 ```
+The dashboard provides:
+- Interactive fraud detection demo
+- Visualization of prediction results
 
-Open:
-
-```
-http://127.0.0.1:8000/docs
-```
-
----
-
-### Test prediction
-
-Use `sample_request_predict.json`:
+Use `sample_request.json` to test prediction:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/predict -H "Content-Type: application/json" --data @sample_request_predict.json
+curl -X POST http://127.0.0.1:8000/predict_raw -H "Content-Type: application/json" --data @sample_request.json
 ```
 
 ---
@@ -158,7 +150,7 @@ This repo now follows the same end-to-end direction covered across the course le
 
 So the project is no longer only a CI/CD slice. It now includes the full production path needed for reporting and demo:
 
-- `src/api.py` exposes `/predict`, `/predict_raw`, `/feedback`, `/health`, and `/metrics`
+- `src/api.py` exposes `/predict_raw`, `/feedback`, `/health`, and `/metrics`
 - `Dockerfile` packages the inference service with a runtime-only dependency set and runs it as a non-root container
 - `.github/workflows/quality-ci.yml` checks lint + tests
 - `.github/workflows/docker-image.yml` builds and publishes the API image to `GHCR`
@@ -173,7 +165,7 @@ So the project is no longer only a CI/CD slice. It now includes the full product
 ### Build image
 
 ```bash
-docker build -t ghcr.io/team-5-fraud-dectection/mlops-fraud-detection:latest .
+docker build -t ghcr.io/team-4-fraud-dectection/mlops-fraud-detection:latest .
 ```
 
 The Docker image installs `requirements-runtime.txt` so the deployed API image stays smaller than the full training environment in `requirements.txt`.
@@ -181,7 +173,7 @@ The Docker image installs `requirements-runtime.txt` so the deployed API image s
 ### Run container
 
 ```bash
-docker run -p 8000:8000 ghcr.io/team-5-fraud-dectection/mlops-fraud-detection:latest
+docker run -p 8000:8000 ghcr.io/team-4-fraud-dectection/mlops-fraud-detection:latest
 ```
 
 ---
@@ -198,16 +190,15 @@ The repository now includes `.github/workflows/docker-image.yml`.
 
 What it does:
 
-- builds the FastAPI image on every push / PR
-- pushes the image to `GHCR` on branch pushes
-- tags images by branch name and commit SHA
+- Builds the FastAPI image on every push / PR
+- Pushes the image to `GHCR` on branch pushes
+- Tags images by branch name and commit SHA
 
 Published image target:
 
 ```text
-ghcr.io/team-5-fraud-dectection/mlops-fraud-detection
+ghcr.io/team-4-fraud-dectection/mlops-fraud-detection
 ```
-
 This matches the image reference used in the Kubernetes manifests.
 
 ## Kubernetes Deployment
@@ -224,8 +215,7 @@ Quick start with `kind`:
 
 ```bash
 kind create cluster --name mlops-cluster --config deployment/kubernetes/kind-three-node-cluster.yaml
-docker build -t ghcr.io/team-5-fraud-dectection/mlops-fraud-detection:latest .
-kind load docker-image ghcr.io/team-5-fraud-dectection/mlops-fraud-detection:latest --name mlops-cluster
+kind load docker-image ghcr.io/team-4-fraud-dectection/mlops-fraud-detection:latest --name mlops-cluster
 kubectl apply -k deployment/kubernetes
 kubectl rollout status deployment/ml-api
 ```
@@ -245,9 +235,9 @@ http://localhost:30007/docs
 The deployment includes:
 
 - 2 replicas
-- rolling updates
-- readiness + liveness probes on `/health`
-- resource requests and limits
+- Rolling updates
+- Readiness + liveness probes on `/health`
+- Resource requests and limits
 
 ## Blue-Green Deployment
 
@@ -287,7 +277,7 @@ SERVICE_NAME=fraud-api REGION=asia-southeast1 TRAFFIC_TAG=green bash scripts/gcp
 
 Prediction monitoring is built into the FastAPI service:
 
-- `/predict` and `/predict_raw` append per-record prediction events to `logs/predictions.jsonl`
+- `/predict_raw` appends per-record prediction events to `logs/predictions.jsonl`
 - `/feedback` appends realized labels to `logs/prediction_feedback.jsonl`
 - `/health` exposes monitoring paths and model readiness
 - `/metrics` exposes Prometheus-compatible HTTP metrics for Kubernetes monitoring
@@ -443,3 +433,11 @@ Why this still matches the lecture direction:
 ```
 models/model.pkl
 ```
+
+## Team Members
+Ha Quang Minh 
+Doan Tung Lam 
+Pham Minh Bao Ngoc 
+Bui Thi Lan Anh 
+Pham Thanh Long 
+Ninh Duy Tuan
